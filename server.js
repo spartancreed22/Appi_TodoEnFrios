@@ -7,6 +7,7 @@ require('dotenv').config();
 const empleadosRoutes = require('./src/routes/empleados.routes');
 const productosRoutes = require('./src/routes/productos.routes');
 const publicacionesRoutes = require('./src/routes/publicaciones.routes');
+const negocioRoutes = require('./src/routes/negocio.routes'); // NUEVO
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,7 +44,8 @@ app.get('/', (req, res) => {
         endpoints: {
             empleados: '/api/empleados',
             productos: '/api/productos',
-            publicaciones: '/api/publicaciones'
+            publicaciones: '/api/publicaciones',
+            negocio: '/api/negocio'
         }
     });
 });
@@ -62,6 +64,7 @@ app.get('/health', (req, res) => {
 app.use('/api/empleados', empleadosRoutes);
 app.use('/api/productos', productosRoutes);
 app.use('/api/publicaciones', publicacionesRoutes);
+app.use('/api/negocio', negocioRoutes); // NUEVO
 
 // ========================================
 // MANEJO DE ERRORES
@@ -104,6 +107,7 @@ app.listen(PORT, () => {
     console.log(`   GET  /api/empleados`);
     console.log(`   GET  /api/productos`);
     console.log(`   GET  /api/publicaciones`);
+    console.log(`   GET  /api/negocio`);
     console.log(`   GET  /health (estado del servidor)`);
     console.log('═════════════════════════════════════════\n');
 });

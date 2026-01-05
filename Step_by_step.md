@@ -2042,3 +2042,689 @@ Validaciones: Verificamos que los datos sean correctos antes de consultar la BD
 Mensajes claros: Errores descriptivos para debugging
 Health check: Endpoint /health para monitorear el servidor
 Logs mejorados: Con marca de tiempo y formato claro
+
+
+## Ultimas Correcciones.
+
+# 🔧 **CORRECCIÓN COMPLETA: Separar Publicaciones y Mi Negocio**
+
+Tienes toda la razón. Vamos a separar correctamente:
+- **`publicaciones`** → Tabla de publicaciones con filtro de fechas
+- **`mi_negocio`** → Información del negocio (separado)
+
+---
+
+## 📝 **PASO 1: ACTUALIZAR MODELOS**
+
+### **1.1 - publicacion.model.js (NUEVO)**
+
+Crea `C:\xampp\htdocs\api\src\models\publicacion.model.js`:
+
+```javascript
+const db = require('../config/database');
+
+class PublicacionModel {
+    // Obtener todas las publicaciones activas y vigentes
+    static async getAll() {
+        const [rows] = await db.query(`
+            SELECT * 
+            FROM publicaciones 
+            WHERE status = 'activo' 
+              AND fecha_fin_publi >= CURDATE()
+            ORDER BY fecha_inicio_publi DESC
+        `);
+        return rows;
+    }
+
+    // Obtener publicación por ID
+    static async getById(id) {
+        const [rows] = await db.query(`
+            SELECT * 
+            FROM publicaciones 
+            WHERE id = ?
+        `, [id]);
+        return rows[0];
+    }
+
+    // Obtener publicaciones vigentes (fecha actual entre inicio y fin)
+    static async getVigentes() {
+        const [rows] = await db.query(`
+            SELECT * 
+            FROM publicaciones 
+            WHERE status = 'activo' 
+              AND fecha_inicio_publi <= CURDATE() 
+              AND fecha_fin_publi >= CURDATE()
+            ORDER BY fecha_inicio_publi DESC
+        `);
+        return rows;
+    }
+
+    // Obtener próximas publicaciones (que aún no han iniciado)
+    static async getProximas() {
+        const [rows] = await db.query(`
+            SELECT * 
+            FROM publicaciones 
+            WHERE status = 'activo' 
+              AND fecha_inicio_publi > CURDATE()
+            ORDER BY fecha_inicio_publi ASC
+        `);
+        return rows;
+    }
+
+    // Obtener publicaciones vencidas
+    static async getVencidas() {
+        const [rows] = await db.query(`
+            SELECT * 
+            FROM publicaciones 
+            WHERE status = 'activo' 
+              AND fecha_fin_publi < CURDATE()
+            ORDER BY fecha_fin_publi DESC
+        `);
+        return rows;
+    }
+
+    // Buscar publicaciones por título
+    static async search(query) {
+        const [rows] = await db.query(`
+            SELECT * 
+            FROM publicaciones 
+            WHERE status = 'activo' 
+              AND titulo LIKE ?
+              AND fecha_fin_publi >= CURDATE()
+            ORDER BY fecha_inicio_publi DESC
+        `, [`%${query}%`]);
+        return rows;
+    }
+}
+
+module.exports = PublicacionModel;
+```
+
+### **1.2 - negocio.model.js (RENOMBRAR)**
+
+Renombra `mi_negocio.model.js` a `negocio.model.js`:
+
+`C:\xampp\htdocs\api\src\models\negocio.model.js`:
+
+```javascript
+const db = require('../config/database');
+
+class NegocioModel {
+    // Obtener información del negocio
+    static async get() {
+        const [rows] = await db.query('SELECT * FROM mi_negocio LIMIT 1');
+        return rows[0];
+    }
+
+    // Verificar si existe información del negocio
+    static async exists() {
+        const [rows] = await db.query('SELECT COUNT(*) as count FROM mi_negocio');
+        return rows[0].count > 0;
+    }
+}
+
+module.exports = NegocioModel;
+```
+
+---
+
+## 🎮 **PASO 2: CREAR/ACTUALIZAR CONTROLADORES**
+
+### **2.1 - publicaciones.controller.js (NUEVO)**
+
+Crea `C:\xampp\htdocs\api\src\controllers\publicaciones.controller.js`:
+
+```javascript
+const PublicacionModel = require('../models/publicacion.model');
+
+class PublicacionesController {
+    // GET /api/publicaciones
+    static async getAll(req, res) {
+        try {
+            const publicaciones = await PublicacionModel.getAll();
+            
+            res.status(200).json({
+                success: true,
+                data: publicaciones,
+                count: publicaciones.length,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error en getAll:', error);
+            
+            res.status(500).json({
+                success: false,
+                error: 'Error interno del servidor',
+                message: 'No se pudieron obtener las publicaciones',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // GET /api/publicaciones/:id
+    static async getById(req, res) {
+        try {
+            const { id } = req.params;
+
+            if (isNaN(id) || id <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'ID inválido',
+                    message: 'El ID de la publicación debe ser un número positivo',
+                    received: id,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            const publicacion = await PublicacionModel.getById(id);
+            
+            if (!publicacion) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Publicación no encontrada',
+                    message: `No existe ninguna publicación con el ID ${id}`,
+                    id: id,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                data: publicacion,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error en getById:', error);
+            
+            res.status(500).json({
+                success: false,
+                error: 'Error interno del servidor',
+                message: 'No se pudo obtener la publicación',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // GET /api/publicaciones/vigentes
+    static async getVigentes(req, res) {
+        try {
+            const publicaciones = await PublicacionModel.getVigentes();
+            
+            res.status(200).json({
+                success: true,
+                data: publicaciones,
+                count: publicaciones.length,
+                message: 'Publicaciones activas actualmente',
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error en getVigentes:', error);
+            
+            res.status(500).json({
+                success: false,
+                error: 'Error interno del servidor',
+                message: 'No se pudieron obtener las publicaciones vigentes',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // GET /api/publicaciones/proximas
+    static async getProximas(req, res) {
+        try {
+            const publicaciones = await PublicacionModel.getProximas();
+            
+            res.status(200).json({
+                success: true,
+                data: publicaciones,
+                count: publicaciones.length,
+                message: 'Publicaciones próximas a iniciar',
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error en getProximas:', error);
+            
+            res.status(500).json({
+                success: false,
+                error: 'Error interno del servidor',
+                message: 'No se pudieron obtener las publicaciones próximas',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // GET /api/publicaciones/vencidas
+    static async getVencidas(req, res) {
+        try {
+            const publicaciones = await PublicacionModel.getVencidas();
+            
+            res.status(200).json({
+                success: true,
+                data: publicaciones,
+                count: publicaciones.length,
+                message: 'Publicaciones vencidas',
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error en getVencidas:', error);
+            
+            res.status(500).json({
+                success: false,
+                error: 'Error interno del servidor',
+                message: 'No se pudieron obtener las publicaciones vencidas',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // GET /api/publicaciones/search?q=query
+    static async search(req, res) {
+        try {
+            const { q } = req.query;
+
+            if (!q || q.trim() === '') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Parámetro de búsqueda requerido',
+                    message: 'Debe proporcionar un término de búsqueda',
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            const publicaciones = await PublicacionModel.search(q);
+
+            res.status(200).json({
+                success: true,
+                data: publicaciones,
+                count: publicaciones.length,
+                query: q,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error en search:', error);
+            
+            res.status(500).json({
+                success: false,
+                error: 'Error interno del servidor',
+                message: 'No se pudo realizar la búsqueda',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+}
+
+module.exports = PublicacionesController;
+```
+
+### **2.2 - negocio.controller.js (NUEVO)**
+
+Crea `C:\xampp\htdocs\api\src\controllers\negocio.controller.js`:
+
+```javascript
+const NegocioModel = require('../models/negocio.model');
+
+class NegocioController {
+    // GET /api/negocio
+    static async getInfo(req, res) {
+        try {
+            const negocio = await NegocioModel.get();
+            
+            if (!negocio) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Información no encontrada',
+                    message: 'No se encontró información del negocio en la base de datos',
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                data: negocio,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error en getInfo:', error);
+            
+            res.status(500).json({
+                success: false,
+                error: 'Error interno del servidor',
+                message: 'No se pudo obtener la información del negocio',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // GET /api/negocio/exists
+    static async checkExists(req, res) {
+        try {
+            const exists = await NegocioModel.exists();
+            
+            res.status(200).json({
+                success: true,
+                exists: exists,
+                message: exists 
+                    ? 'La información del negocio existe' 
+                    : 'No hay información del negocio registrada',
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error en checkExists:', error);
+            
+            res.status(500).json({
+                success: false,
+                error: 'Error interno del servidor',
+                message: 'No se pudo verificar la existencia del negocio',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+}
+
+module.exports = NegocioController;
+```
+
+---
+
+## 🛣️ **PASO 3: CREAR/ACTUALIZAR RUTAS**
+
+### **3.1 - publicaciones.routes.js (ACTUALIZAR)**
+
+Reemplaza `C:\xampp\htdocs\api\src\routes\publicaciones.routes.js`:
+
+```javascript
+const express = require('express');
+const router = express.Router();
+const PublicacionesController = require('../controllers/publicaciones.controller');
+
+// Rutas específicas primero (antes de /:id)
+router.get('/vigentes', PublicacionesController.getVigentes);
+router.get('/proximas', PublicacionesController.getProximas);
+router.get('/vencidas', PublicacionesController.getVencidas);
+router.get('/search', PublicacionesController.search);
+
+// Rutas generales
+router.get('/', PublicacionesController.getAll);
+router.get('/:id', PublicacionesController.getById);
+
+module.exports = router;
+```
+
+### **3.2 - negocio.routes.js (NUEVO)**
+
+Crea `C:\xampp\htdocs\api\src\routes\negocio.routes.js`:
+
+```javascript
+const express = require('express');
+const router = express.Router();
+const NegocioController = require('../controllers/negocio.controller');
+
+router.get('/', NegocioController.getInfo);
+router.get('/exists', NegocioController.checkExists);
+
+module.exports = router;
+```
+
+---
+
+## 🚀 **PASO 4: ACTUALIZAR server.js**
+
+Reemplaza `C:\xampp\htdocs\api\server.js`:
+
+```javascript
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+require('dotenv').config();
+
+// Importar rutas
+const empleadosRoutes = require('./src/routes/empleados.routes');
+const productosRoutes = require('./src/routes/productos.routes');
+const publicacionesRoutes = require('./src/routes/publicaciones.routes');
+const negocioRoutes = require('./src/routes/negocio.routes'); // NUEVO
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ========================================
+// MIDDLEWARES
+// ========================================
+app.use(cors({
+    origin: '*', // En producción, especifica dominios permitidos
+    credentials: true
+}));
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// Log de peticiones con colores
+app.use((req, res, next) => {
+    const timestamp = new Date().toLocaleTimeString('es-CO');
+    console.log(`[${timestamp}] ${req.method} ${req.path}`);
+    next();
+});
+
+// ========================================
+// RUTAS
+// ========================================
+
+// Ruta raíz - Estado de la API
+app.get('/', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: '🚀 API TodoEnFrios - Sistema de Gestión',
+        version: '1.0.0',
+        status: 'online',
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            empleados: '/api/empleados',
+            productos: '/api/productos',
+            publicaciones: '/api/publicaciones',
+            negocio: '/api/negocio'
+        }
+    });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        success: true,
+        status: 'healthy',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Rutas de la API
+app.use('/api/empleados', empleadosRoutes);
+app.use('/api/productos', productosRoutes);
+app.use('/api/publicaciones', publicacionesRoutes);
+app.use('/api/negocio', negocioRoutes); // NUEVO
+
+// ========================================
+// MANEJO DE ERRORES
+// ========================================
+
+// 404 - Ruta no encontrada
+app.use((req, res) => {
+    res.status(404).json({ 
+        success: false,
+        error: 'Ruta no encontrada',
+        path: req.path,
+        method: req.method,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// 500 - Error interno del servidor
+app.use((err, req, res, next) => {
+    console.error('❌ Error interno:', err.stack);
+    
+    res.status(err.status || 500).json({ 
+        success: false,
+        error: 'Error interno del servidor',
+        message: process.env.NODE_ENV === 'development' ? err.message : 'Ha ocurrido un error',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// ========================================
+// INICIAR SERVIDOR
+// ========================================
+app.listen(PORT, () => {
+    console.log('\n╔════════════════════════════════════════╗');
+    console.log('║   🚀 API TodoEnFrios INICIADA         ║');
+    console.log('╚════════════════════════════════════════╝');
+    console.log(`📡 Servidor: http://localhost:${PORT}`);
+    console.log(`📊 Entorno: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`⏰ Iniciado: ${new Date().toLocaleString('es-CO')}`);
+    console.log('\n📋 Endpoints disponibles:');
+    console.log(`   GET  /api/empleados`);
+    console.log(`   GET  /api/productos`);
+    console.log(`   GET  /api/publicaciones`);
+    console.log(`   GET  /api/negocio`);
+    console.log(`   GET  /health (estado del servidor)`);
+    console.log('═════════════════════════════════════════\n');
+});
+
+// Manejo de cierre graceful
+process.on('SIGINT', () => {
+    console.log('\n⚠️  Cerrando servidor...');
+    process.exit(0);
+});
+```
+
+---
+
+## 🗂️ **PASO 5: ELIMINAR ARCHIVOS ANTIGUOS**
+
+Elimina el archivo antiguo:
+```
+❌ ELIMINAR: C:\xampp\htdocs\api\src\models\mi_negocio.model.js
+```
+
+---
+
+## 📊 **RESUMEN DE NUEVOS ENDPOINTS**
+
+### **📰 Publicaciones:**
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /api/publicaciones` | Todas las publicaciones activas no vencidas |
+| `GET /api/publicaciones/:id` | Publicación por ID |
+| `GET /api/publicaciones/vigentes` | Publicaciones vigentes (activas HOY) |
+| `GET /api/publicaciones/proximas` | Publicaciones que inician en el futuro |
+| `GET /api/publicaciones/vencidas` | Publicaciones ya finalizadas |
+| `GET /api/publicaciones/search?q=` | Buscar publicaciones por título |
+
+### **🏢 Negocio:**
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /api/negocio` | Información del negocio |
+| `GET /api/negocio/exists` | Verificar si existe info del negocio |
+
+---
+
+## 🧪 **PASO 6: PROBAR LOS ENDPOINTS**
+
+### **Reinicia el servidor:**
+```bash
+cd C:\xampp\htdocs\api
+npm run dev
+```
+
+### **Prueba los endpoints:**
+
+#### **✅ Negocio:**
+```bash
+GET http://localhost:3000/api/negocio
+```
+
+**Respuesta esperada:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "nombre": "Todo en Frios del Tolima",
+    "descripcion": "Empresa dedicada a la venta...",
+    "mision": "Ofrecer servicios confiables...",
+    "vision": "Ser la empresa líder...",
+    "telefono": "3001234567",
+    "email": "contacto@todoenfriosdeltolima.com",
+    "direccion": "Calle 123 #45-67, Ibagué, Tolima",
+    "nit": "900123456-7",
+    "logo_url": null
+  },
+  "timestamp": "2026-01-05T03:00:00.000Z"
+}
+```
+
+#### **✅ Publicaciones vigentes:**
+```bash
+GET http://localhost:3000/api/publicaciones/vigentes
+```
+
+#### **✅ Todas las publicaciones:**
+```bash
+GET http://localhost:3000/api/publicaciones
+```
+
+#### **❌ Si no hay publicaciones:**
+```json
+{
+  "success": true,
+  "data": [],
+  "count": 0,
+  "timestamp": "2026-01-05T03:00:00.000Z"
+}
+```
+
+---
+
+## 📋 **CHECKLIST DE VERIFICACIÓN**
+
+- [ ] Modelo `publicacion.model.js` creado
+- [ ] Modelo `negocio.model.js` creado (renombrado)
+- [ ] Controlador `publicaciones.controller.js` actualizado
+- [ ] Controlador `negocio.controller.js` creado
+- [ ] Rutas `publicaciones.routes.js` actualizadas
+- [ ] Rutas `negocio.routes.js` creadas
+- [ ] `server.js` actualizado con nueva ruta `/api/negocio`
+- [ ] Archivo `mi_negocio.model.js` eliminado
+- [ ] Servidor reiniciado
+- [ ] Endpoints probados
+
+---
+
+## 🎯 **LÓGICA DEL FILTRO DE FECHAS**
+
+El modelo `PublicacionModel` filtra automáticamente:
+
+```sql
+-- Publicaciones vigentes
+WHERE fecha_fin_publi >= CURDATE()
+
+-- Publicaciones activas HOY
+WHERE fecha_inicio_publi <= CURDATE() 
+  AND fecha_fin_publi >= CURDATE()
+
+-- Publicaciones próximas
+WHERE fecha_inicio_publi > CURDATE()
+
+-- Publicaciones vencidas
+WHERE fecha_fin_publi < CURDATE()
+```
+
+---
+
+¿Todo listo? ¡Ahora tienes separado correctamente **Publicaciones** y **Negocio**! 🚀
