@@ -7,7 +7,6 @@ class ProductosController {
         try {
             const productos = await ProductoModel.getAll();
             
-            // 200 OK - Petición exitosa
             res.status(200).json({
                 success: true,
                 data: productos,
@@ -15,13 +14,13 @@ class ProductosController {
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
-            console.error('Error en getAll:', error);
+            console.error('❌ Error en getAll:', error);
             
-            // 500 Internal Server Error
             res.status(500).json({
                 success: false,
-                error: 'Error al obtener productos',
-                message: error.message,
+                error: 'Error interno del servidor',
+                message: 'No se pudieron obtener los productos',
+                details: error.message,
                 timestamp: new Date().toISOString()
             });
         }
@@ -32,13 +31,12 @@ class ProductosController {
         try {
             const { id } = req.params;
 
-            // Validar que el ID sea numérico
-            if (isNaN(id)) {
-                // 400 Bad Request - Datos inválidos
+            if (isNaN(id) || id <= 0) {
                 return res.status(400).json({
                     success: false,
                     error: 'ID inválido',
-                    message: 'El ID debe ser un número',
+                    message: 'El ID del producto debe ser un número positivo',
+                    received: id,
                     timestamp: new Date().toISOString()
                 });
             }
@@ -46,10 +44,10 @@ class ProductosController {
             const producto = await ProductoModel.getById(id);
             
             if (!producto) {
-                // 404 Not Found - Recurso no encontrado
                 return res.status(404).json({
                     success: false,
                     error: 'Producto no encontrado',
+                    message: `No existe ningún producto con el ID ${id}`,
                     id: id,
                     timestamp: new Date().toISOString()
                 });
@@ -57,22 +55,21 @@ class ProductosController {
 
             // Obtener imágenes del producto
             const imagenes = await ImgProductoModel.getByCodProducto(producto.codigo);
-            producto.imagenes = imagenes;
+            producto.imagenes = imagenes || [];
 
-            // 200 OK
             res.status(200).json({
                 success: true,
                 data: producto,
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
-            console.error('Error en getById:', error);
+            console.error('❌ Error en getById:', error);
             
-            // 500 Internal Server Error
             res.status(500).json({
                 success: false,
-                error: 'Error al obtener producto',
-                message: error.message,
+                error: 'Error interno del servidor',
+                message: 'No se pudo obtener el producto',
+                details: error.message,
                 timestamp: new Date().toISOString()
             });
         }
@@ -84,11 +81,10 @@ class ProductosController {
             const { codigo } = req.params;
 
             if (!codigo || codigo.trim() === '') {
-                // 400 Bad Request
                 return res.status(400).json({
                     success: false,
                     error: 'Código inválido',
-                    message: 'El código no puede estar vacío',
+                    message: 'El código del producto no puede estar vacío',
                     timestamp: new Date().toISOString()
                 });
             }
@@ -96,29 +92,28 @@ class ProductosController {
             const producto = await ProductoModel.getByCodigo(codigo);
             
             if (!producto) {
-                // 404 Not Found
                 return res.status(404).json({
                     success: false,
                     error: 'Producto no encontrado',
+                    message: `No existe ningún producto con el código ${codigo}`,
                     codigo: codigo,
                     timestamp: new Date().toISOString()
                 });
             }
 
-            // 200 OK
             res.status(200).json({
                 success: true,
                 data: producto,
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
-            console.error('Error en getByCodigo:', error);
+            console.error('❌ Error en getByCodigo:', error);
             
-            // 500 Internal Server Error
             res.status(500).json({
                 success: false,
-                error: 'Error al obtener producto',
-                message: error.message,
+                error: 'Error interno del servidor',
+                message: 'No se pudo obtener el producto',
+                details: error.message,
                 timestamp: new Date().toISOString()
             });
         }
@@ -129,7 +124,6 @@ class ProductosController {
         try {
             const productos = await ProductoModel.getConImagenes();
             
-            // 200 OK
             res.status(200).json({
                 success: true,
                 data: productos,
@@ -137,13 +131,49 @@ class ProductosController {
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
-            console.error('Error en getConImagenes:', error);
+            console.error('❌ Error en getConImagenes:', error);
             
-            // 500 Internal Server Error
             res.status(500).json({
                 success: false,
-                error: 'Error al obtener productos con imágenes',
-                message: error.message,
+                error: 'Error interno del servidor',
+                message: 'No se pudieron obtener los productos con imágenes',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // GET /api/productos/search?q=query
+    static async search(req, res) {
+        try {
+            const { q } = req.query;
+
+            if (!q || q.trim() === '') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Parámetro de búsqueda requerido',
+                    message: 'Debe proporcionar un término de búsqueda',
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            const productos = await ProductoModel.search(q);
+
+            res.status(200).json({
+                success: true,
+                data: productos,
+                count: productos.length,
+                query: q,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error en search:', error);
+            
+            res.status(500).json({
+                success: false,
+                error: 'Error interno del servidor',
+                message: 'No se pudo realizar la búsqueda',
+                details: error.message,
                 timestamp: new Date().toISOString()
             });
         }
